@@ -1,0 +1,13 @@
+
+            This is a sample document for testing the RAG application.
+            It contains multiple paragraphs to demonstrate document chunking.
+            
+            The RAG (Retrieval-Augmented Generation) approach combines the power
+            of information retrieval with language generation. This allows AI systems
+            to access and use specific information from a knowledge base when
+            generating responses.
+            
+            Vector databases like FAISS enable efficient similarity search over
+            high-dimensional embeddings, making it possible to quickly find
+            relevant document chunks for any given query.
+            

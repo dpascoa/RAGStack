@@ -32,8 +32,8 @@ class DocumentIngestor:
     def __init__(
         self,
         embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2",
-        chunk_size: int = 500,
-        chunk_overlap: int = 100,
+        chunk_size: int = 800,
+        chunk_overlap: int = 160,
         vector_store_path: str = "./vector_store"
     ):
         """
@@ -138,7 +138,8 @@ class DocumentIngestor:
             
             for page_num, page in enumerate(pdf_reader.pages):
                 text = page.extract_text()
-                if text.strip():  # Only add non-empty pages
+                if text and text.strip():  # Only add non-empty pages
+                    text = " ".join(text.split())
                     doc = Document(
                         page_content=text,
                         metadata={
@@ -165,6 +166,30 @@ class DocumentIngestor:
         """
         logger.info("Chunking documents...")
         chunks = self.text_splitter.split_documents(documents)
+
+        # Group chunks by originating file to retain position metadata
+        chunks_by_file: Dict[str, List[Document]] = {}
+        for chunk in chunks:
+            chunk.metadata = dict(chunk.metadata)
+            source_path = chunk.metadata.get('source')
+            file_name = chunk.metadata.get('file_name') or (Path(source_path).name if source_path else "unknown_source")
+            chunk.metadata['file_name'] = file_name
+            if 'file_type' not in chunk.metadata and source_path:
+                chunk.metadata['file_type'] = Path(source_path).suffix.lstrip('.')
+            chunks_by_file.setdefault(file_name, []).append(chunk)
+
+        for file_name, file_chunks in chunks_by_file.items():
+            total_chunks = len(file_chunks)
+            for idx, chunk in enumerate(file_chunks, start=1):
+                chunk.metadata['chunk_index'] = idx
+                chunk.metadata['total_chunks'] = total_chunks
+                chunk.metadata['chunk_id'] = f"{file_name}-chunk-{idx}"
+                chunk.metadata['chunk_char_count'] = len(chunk.page_content)
+                if chunk.metadata.get('page_number') is None:
+                    chunk.metadata['page_number'] = 'n/a'
+                if chunk.metadata.get('total_pages') is None:
+                    chunk.metadata['total_pages'] = 'n/a'
+
         logger.info(f"Created {len(chunks)} chunks")
         return chunks
     
@@ -260,12 +285,12 @@ class DocumentIngestor:
         if not documents:
             raise ValueError("No documents found to process")
         
-        # Store document metadata
-        self.document_metadata = [doc.metadata for doc in documents]
-        
         # Chunk documents
         chunks = self.chunk_documents(documents)
         
+        # Store metadata aligned with chunks for downstream tracing
+        self.document_metadata = [chunk.metadata for chunk in chunks]
+
         # Create vector store
         vector_store = self.create_vector_store(chunks)
         
