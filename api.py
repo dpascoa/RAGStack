@@ -1,6 +1,42 @@
 """
-FastAPI service for RAG application.
-Provides REST API endpoints for document processing and question answering.
+FastAPI service for RAG (Retrieval-Augmented Generation) application.
+
+This module provides a RESTful API service for a question-answering system that combines
+document retrieval with language model generation. It supports document upload, querying,
+and conversation management through various endpoints.
+
+Key Features:
+    - Document upload and processing (.txt and .pdf)
+    - Question answering with source citations
+    - Document similarity search
+    - Conversation history management
+    - Model configuration
+    - Health and status monitoring
+
+The API uses FastAPI for high performance and automatic OpenAPI documentation generation.
+All endpoints follow REST principles and include proper error handling.
+
+Dependencies:
+    - FastAPI: Web framework for building APIs
+    - Uvicorn: ASGI server implementation
+    - Pydantic: Data validation using Python type annotations
+    - Custom RAG modules: qa.py and ingest.py for core functionality
+
+Environment Variables:
+    None required, but the following paths are used:
+    - ./vector_store: For storing document embeddings
+    - ./uploaded_docs: For temporary document storage
+
+Example Usage:
+    ```python
+    # Run the server
+    uvicorn api:app --host 0.0.0.0 --port 8000
+
+    # In another process
+    import requests
+    response = requests.get("http://localhost:8000/ask?question=What is RAG?")
+    print(response.json())
+    ```
 """
 
 import logging
@@ -67,13 +103,48 @@ app.add_middleware(
 
 # Pydantic models
 class QuestionRequest(BaseModel):
-    """Request model for asking questions."""
+    """
+    Pydantic model for question request body.
+
+    This model validates the JSON payload for POST /ask endpoint, ensuring
+    proper question format and optional retrieval parameters.
+
+    Attributes:
+        question: The user's question to be answered by the RAG system.
+                 Must be a non-empty string.
+        top_k: Number of relevant documents to retrieve for context.
+               Defaults to 4, must be a positive integer.
+               Larger values provide more context but may slow down response time.
+    """
     question: str = Field(..., description="The question to ask")
     top_k: Optional[int] = Field(4, description="Number of documents to retrieve")
 
 
 class AnswerResponse(BaseModel):
-    """Response model for answers."""
+    """
+    Pydantic model for question-answering response.
+
+    This model structures the JSON response for both GET and POST /ask endpoints,
+    including the generated answer, source documents, and any errors.
+
+    Attributes:
+        answer: The AI-generated answer based on retrieved documents.
+        question: The original question for reference.
+        source_documents: List of relevant document chunks used for the answer,
+                        including content and metadata.
+        num_sources: Total number of source documents used.
+        error: Optional error message if something went wrong during processing.
+               Null if successful.
+
+    Example:
+        {
+            "answer": "RAG is a technique that combines...",
+            "question": "What is RAG?",
+            "source_documents": [{"content": "...", "metadata": {...}}],
+            "num_sources": 2,
+            "error": null
+        }
+    """
     answer: str = Field(..., description="The generated answer")
     question: str = Field(..., description="The original question")
     source_documents: List[Dict[str, Any]] = Field(..., description="Source documents used")
@@ -82,21 +153,84 @@ class AnswerResponse(BaseModel):
 
 
 class DocumentInfo(BaseModel):
-    """Model for document information."""
+    """
+    Pydantic model for document chunk information.
+
+    This model represents a single document chunk from the vector store,
+    including its content, metadata, and relevance ranking. Used primarily
+    by the /search endpoint.
+
+    Attributes:
+        content: The actual text content of the document chunk.
+        metadata: Document metadata including file name, type, page numbers,
+                 chunk indices, and other relevant information.
+        rank: Relevance ranking (1-based) indicating how well this document
+              matches the search query, with 1 being the most relevant.
+
+    Example:
+        {
+            "content": "RAG (Retrieval-Augmented Generation) is...",
+            "metadata": {
+                "file_name": "intro.pdf",
+                "page_number": 1,
+                "chunk_index": 2
+            },
+            "rank": 1
+        }
+    """
     content: str = Field(..., description="Document content")
     metadata: Dict[str, Any] = Field(..., description="Document metadata")
     rank: int = Field(..., description="Relevance rank")
 
 
 class StatusResponse(BaseModel):
-    """Response model for system status."""
+    """
+    Pydantic model for system status information.
+
+    This model provides the current state of the RAG system, including
+    initialization status and document statistics. Used by the /status endpoint.
+
+    Attributes:
+        status: Current system state, one of:
+               - "initialized": System is ready for use
+               - "not_initialized": System is starting up or has failed
+        vector_store_loaded: Boolean indicating whether the FAISS vector
+                           store is loaded and ready for queries.
+        num_documents: Optional count of document chunks in the vector store.
+                      Null if vector store is not loaded.
+
+    Example:
+        {
+            "status": "initialized",
+            "vector_store_loaded": true,
+            "num_documents": 150
+        }
+    """
     status: str = Field(..., description="System status")
     vector_store_loaded: bool = Field(..., description="Whether vector store is loaded")
     num_documents: Optional[int] = Field(None, description="Number of documents in vector store")
 
 
 class HealthResponse(BaseModel):
-    """Response model for health check."""
+    """
+    Pydantic model for health check response.
+
+    This model provides health status information about the service,
+    used by the /health endpoint for monitoring and alerting.
+
+    Attributes:
+        status: Health status string, either:
+               - "healthy": System is functioning normally
+               - "unhealthy": System is experiencing issues
+        message: Detailed message about the health status,
+                useful for debugging and monitoring.
+
+    Example:
+        {
+            "status": "healthy",
+            "message": "RAG system is running"
+        }
+    """
     status: str = Field(..., description="Health status")
     message: str = Field(..., description="Health message")
 
@@ -159,14 +293,43 @@ async def ask_question(
     top_k: int = Query(4, description="Number of documents to retrieve", ge=1, le=10)
 ):
     """
-    Ask a question using the RAG system.
-    
+    Ask a question and get an AI-generated answer with source citations.
+
+    This endpoint processes a question using the RAG system, which:
+    1. Retrieves relevant documents using semantic search
+    2. Uses an LLM to generate an answer based on the retrieved context
+    3. Returns the answer with source citations and document snippets
+
     Args:
-        question: The question to ask
-        top_k: Number of documents to retrieve for context
-        
+        question: The question to ask. Should be a clear, well-formed question.
+        top_k: Number of most relevant documents to retrieve (1-10).
+              Higher values provide more context but may slow down the response.
+              Default is 4, which balances accuracy and speed.
+
     Returns:
-        Answer with source documents
+        AnswerResponse object containing:
+        - Generated answer with source citations
+        - Original question
+        - Relevant document chunks with metadata
+        - Number of sources used
+        - Error message if any
+
+    Raises:
+        HTTPException(503): If RAG system is not initialized
+        HTTPException(400): If question is empty
+        HTTPException(500): For processing errors
+
+    Example Request:
+        GET /ask?question=What%20is%20RAG%3F&top_k=4
+
+    Example Response:
+        {
+            "answer": "RAG (Retrieval-Augmented Generation) is a technique that [intro.txt p1]...",
+            "question": "What is RAG?",
+            "source_documents": [...],
+            "num_sources": 4,
+            "error": null
+        }
     """
     if qa_system is None:
         raise HTTPException(
@@ -295,13 +458,43 @@ async def search_documents(
 @app.post("/upload-documents")
 async def upload_documents(files: List[UploadFile] = File(...)):
     """
-    Upload documents to be processed by the RAG system.
-    
+    Upload and process documents to be used by the RAG system.
+
+    This endpoint handles file uploads and document processing by:
+    1. Validating file types (.txt and .pdf only)
+    2. Saving files to a temporary directory
+    3. Processing documents into chunks
+    4. Creating or updating the vector store
+    5. Cleaning up temporary files
+
     Args:
-        files: List of uploaded files (.txt or .pdf)
-        
+        files: List of files to upload. Each file must be either:
+              - A text file (.txt)
+              - A PDF document (.pdf)
+              Files should be text-based (not scanned images).
+
     Returns:
-        Status of document processing
+        Dict containing:
+        - Success/error message
+        - List of processed files
+        - Processing status
+
+    Raises:
+        HTTPException(400): If no files provided or invalid file type
+        HTTPException(500): For processing errors
+
+    Example Response:
+        {
+            "message": "Successfully uploaded and processed 2 files",
+            "files": ["document1.pdf", "document2.txt"],
+            "status": "success"
+        }
+
+    Notes:
+        - Large files may take longer to process
+        - PDF files must be text-based for proper extraction
+        - Previous vector store will be updated with new documents
+        - Processing includes text extraction, chunking, and embedding
     """
     if not files:
         raise HTTPException(
@@ -455,12 +648,32 @@ async def internal_error_handler(request, exc):
 
 def run_server(host: str = "127.0.0.1", port: int = 8000, reload: bool = True):
     """
-    Run the FastAPI server.
-    
+    Run the FastAPI server with the specified configuration.
+
+    This function starts the Uvicorn ASGI server with the FastAPI application.
+    It's used when running the API directly (not through an external ASGI server).
+
     Args:
-        host: Host to bind to
-        port: Port to bind to
-        reload: Whether to enable auto-reload
+        host: Network interface to bind to:
+              - "127.0.0.1" (default) for local access only
+              - "0.0.0.0" for all network interfaces
+        port: TCP port to listen on (default: 8000)
+        reload: Whether to enable auto-reload on code changes.
+               Useful during development, should be False in production.
+
+    Example Usage:
+        ```python
+        # Run locally for development
+        run_server()
+
+        # Run on all interfaces for production
+        run_server(host="0.0.0.0", port=80, reload=False)
+        ```
+
+    Notes:
+        - In production, consider using a proper ASGI server configuration
+        - The server provides automatic API documentation at /docs
+        - For HTTPS, configure the ASGI server with SSL certificates
     """
     uvicorn.run(
         "api:app",

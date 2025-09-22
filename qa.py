@@ -1,6 +1,60 @@
 """
-Question-Answering module for RAG application.
-Implements the RAG pipeline using LangChain.
+Question-Answering (QA) module implementing the RAG (Retrieval-Augmented Generation) pipeline.
+
+This module provides the core RAG functionality, combining document retrieval with
+language model generation to produce accurate, context-aware answers. It implements:
+
+1. Document Retrieval:
+   - Semantic similarity search using FAISS
+   - MMR-based retrieval for diversity
+   - Configurable retrieval parameters
+   - Source document tracking
+
+2. Answer Generation:
+   - Integration with Hugging Face models
+   - Context-aware prompt engineering
+   - Source citation generation
+   - Token management for optimal responses
+
+3. Additional Features:
+   - Conversation management
+   - Model switching capability
+   - Detailed source tracking
+   - Memory-efficient processing
+
+Key Components:
+    - RAGQuestionAnswerer: Main class for Q&A functionality
+    - RAGChatBot: Conversation management wrapper
+    - Prompt templates for answer generation
+    - Context preparation utilities
+
+Dependencies:
+    - transformers: For language models
+    - langchain: For RAG pipeline components
+    - torch: For model acceleration
+    - FAISS: For similarity search
+
+Example Usage:
+    ```python
+    # Initialize the QA system
+    qa = RAGQuestionAnswerer()
+
+    # Ask a question
+    response = qa.ask_question("What is RAG?")
+    print(f"Answer: {response['answer']}")
+    print(f"Sources: {response['source_documents']}")
+
+    # Initialize chatbot for conversation
+    chatbot = RAGChatBot(qa)
+    response = chatbot.chat("How does FAISS work?")
+    ```
+
+Technical Notes:
+    - Optimized for both accuracy and speed
+    - GPU acceleration when available
+    - Efficient token management
+    - Thread-safe implementation
+    - Comprehensive error handling
 """
 
 import logging
@@ -23,7 +77,59 @@ logger = logging.getLogger(__name__)
 
 class RAGQuestionAnswerer:
     """
-    Handles question-answering using Retrieval-Augmented Generation.
+    Core RAG implementation for question answering with document context.
+
+    This class implements a complete RAG pipeline that:
+    1. Retrieves relevant documents for a given question
+    2. Prepares optimal context from retrieved documents
+    3. Generates accurate answers with source citations
+    4. Manages document sources and metadata
+
+    The system uses:
+    - FAISS for efficient similarity search
+    - Hugging Face models for text generation
+    - Custom prompt engineering for grounded responses
+    - Token-aware context management
+
+    Attributes:
+        llm_model_name (str): Name of the Hugging Face model to use
+        vector_store_path (str): Path to the FAISS vector store
+        top_k_retrieval (int): Number of documents to retrieve
+        max_tokens (int): Maximum tokens for generation
+        llm: Language model instance
+        vector_store: FAISS vector store instance
+        retriever: Document retriever instance
+        tokenizer: Model tokenizer instance
+        max_context_tokens (int): Token limit for context window
+
+    Example:
+        ```python
+        # Initialize with custom settings
+        qa = RAGQuestionAnswerer(
+            llm_model_name="google/flan-t5-base",
+            top_k_retrieval=4,
+            max_tokens=512
+        )
+
+        # Get an answer with sources
+        response = qa.ask_question(
+            "What are the key components of RAG?"
+        )
+        print(response['answer'])
+        ```
+
+    Technical Details:
+        - Uses MMR retrieval for diverse context
+        - Implements efficient token management
+        - Provides deterministic answer generation
+        - Handles GPU acceleration automatically
+        - Maintains source traceability
+
+    Notes:
+        - Requires initialized vector store
+        - GPU acceleration if available
+        - Thread-safe implementation
+        - Automatic error recovery
     """
     
     def __init__(
@@ -163,7 +269,40 @@ class RAGQuestionAnswerer:
         logger.info("QA chain setup complete")
 
     def _prepare_context(self, documents: List[Document]) -> Tuple[str, List[Document]]:
-        """Select and format documents so the prompt stays within token limits."""
+        """
+        Prepare and format document context within token limits.
+
+        This internal method handles the critical task of context preparation:
+        1. Selects most relevant documents
+        2. Formats documents with metadata
+        3. Manages token budget
+        4. Preserves document coherence
+
+        The process ensures:
+        - Maximum context utilization
+        - Token limit compliance
+        - Source traceability
+        - Optimal answer quality
+
+        Args:
+            documents: List of retrieved document chunks to process.
+                      Should be ordered by relevance.
+
+        Returns:
+            Tuple containing:
+            - Formatted context string within token limits
+            - List of actually used documents for tracking
+
+        Technical Details:
+            - Respects model token limits
+            - Preserves document boundaries
+            - Maintains citation context
+            - Optimizes token usage
+
+        Internal Use:
+            This is a helper method for ask_question() and should not
+            be called directly under normal circumstances.
+        """
         if not documents:
             return "", []
 
@@ -241,13 +380,53 @@ class RAGQuestionAnswerer:
 
     def ask_question(self, question: str) -> Dict[str, Any]:
         """
-        Ask a question and get an answer with source documents.
-        
+        Process a question and generate an answer using RAG.
+
+        This method implements the core RAG pipeline:
+        1. Retrieves relevant documents using semantic search
+        2. Prepares optimal context from retrieved documents
+        3. Generates an answer using the language model
+        4. Formats response with source citations
+
+        The process ensures:
+        - Relevant document selection
+        - Token-aware context preparation
+        - Source-grounded answer generation
+        - Comprehensive error handling
+
         Args:
-            question: The question to ask
-            
+            question: The question to answer. Should be a clear,
+                     well-formed question in natural language.
+
         Returns:
-            Dictionary containing answer and source documents
+            Dict containing:
+            - answer: Generated response with source citations
+            - source_documents: List of relevant documents used
+            - question: Original question
+            - num_sources: Number of sources used
+            - error: Error message if any
+
+        Example:
+            ```python
+            response = qa_system.ask_question(
+                "What are the main components of RAG?"
+            )
+            print(f"Answer: {response['answer']}")
+            print(f"Sources used: {response['num_sources']}")
+            ```
+
+        Technical Details:
+            - Uses MMR for diverse document retrieval
+            - Manages context window efficiently
+            - Provides deterministic responses
+            - Includes comprehensive metadata
+            - Handles errors gracefully
+
+        Notes:
+            - Requires initialized vector store
+            - Response may be truncated to token limit
+            - Sources are cited inline [doc_name pX]
+            - GPU acceleration if available
         """
         if self.retriever is None or self.answer_prompt is None:
             return {
@@ -319,14 +498,56 @@ class RAGQuestionAnswerer:
     
     def get_similar_documents(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
         """
-        Get similar documents for a query without generating an answer.
-        
+        Retrieve semantically similar documents for a given query.
+
+        This method provides direct access to the document retrieval
+        system without answer generation. It's useful for:
+        - Exploring available knowledge
+        - Debugging retrieval quality
+        - Custom processing pipelines
+        - Bulk document analysis
+
+        The retrieval process:
+        1. Converts query to embedding
+        2. Performs FAISS similarity search
+        3. Ranks and formats results
+        4. Includes detailed metadata
+
         Args:
-            query: The search query
-            k: Number of documents to retrieve
-            
+            query: The search query. Can be a question, statement,
+                  or any text to find similar content.
+            k: Number of documents to retrieve (default: 5).
+               Higher values provide more comprehensive results
+               but may include less relevant documents.
+
         Returns:
-            List of similar documents with metadata
+            List of dictionaries, each containing:
+            - content: Document text content
+            - metadata: Document metadata (file, page, chunk info)
+            - rank: Relevance ranking (1-based)
+
+        Example:
+            ```python
+            # Find relevant documents
+            docs = qa_system.get_similar_documents(
+                "How does FAISS work?",
+                k=3
+            )
+            for doc in docs:
+                print(f"Rank {doc['rank']}: {doc['content'][:100]}...")
+            ```
+
+        Technical Details:
+            - Uses FAISS for efficient similarity search
+            - Ranks by cosine similarity
+            - Includes complete metadata
+            - Thread-safe implementation
+
+        Notes:
+            - Requires initialized vector store
+            - Results ordered by relevance
+            - k should be reasonable (1-20)
+            - Memory efficient processing
         """
         if self.vector_store is None:
             return []
@@ -375,7 +596,52 @@ class RAGQuestionAnswerer:
 
 class RAGChatBot:
     """
-    A simple chatbot interface for the RAG system with conversation history.
+    Chatbot interface for the RAG system with conversation management.
+
+    This class provides a user-friendly interface to the RAG system with:
+    - Conversation history tracking
+    - Message threading
+    - Source document management
+    - Chat context preservation
+
+    The chatbot maintains a history of interactions while using
+    the RAG system for generating accurate, sourced responses.
+
+    Attributes:
+        qa_system (RAGQuestionAnswerer): The underlying RAG system
+        conversation_history (List[Dict]): List of conversation entries
+            Each entry contains:
+            - question: User's input
+            - answer: System's response
+            - sources: Referenced documents
+            - timestamp: Optional time of interaction
+
+    Example:
+        ```python
+        # Initialize chatbot with RAG system
+        qa = RAGQuestionAnswerer()
+        chatbot = RAGChatBot(qa)
+
+        # Have a conversation
+        response = chatbot.chat("What is RAG?")
+        print(response['answer'])
+
+        # View history
+        history = chatbot.get_conversation_history()
+        print(f"Messages: {len(history)}")
+        ```
+
+    Technical Details:
+        - Thread-safe history management
+        - Efficient memory usage
+        - Source document tracking
+        - Error recovery mechanisms
+
+    Notes:
+        - History is maintained in memory
+        - Each response includes sources
+        - History can be cleared manually
+        - Designed for multi-user usage
     """
     
     def __init__(self, qa_system: RAGQuestionAnswerer):

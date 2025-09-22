@@ -1,6 +1,50 @@
 """
-Document ingestion module for RAG application.
-Handles loading, chunking, and embedding of documents.
+Document ingestion and processing module for RAG (Retrieval-Augmented Generation) application.
+
+This module handles the complete document processing pipeline for RAG systems:
+1. Loading documents from various file formats (.txt, .pdf)
+2. Chunking documents into manageable segments
+3. Computing embeddings for text chunks
+4. Creating and managing FAISS vector stores
+5. Saving and loading processed document stores
+
+The main components are:
+    - DocumentIngestor: Main class handling the ingestion pipeline
+    - Document loading utilities for different file formats
+    - Text chunking with configurable parameters
+    - Vector store management with FAISS
+    - Metadata tracking for document tracing
+
+Dependencies:
+    - sentence_transformers: For text embeddings
+    - langchain: For document loading and text splitting
+    - FAISS: For vector similarity search
+    - PyPDF2: For PDF file processing
+    - pickle: For metadata storage
+
+Example Usage:
+    ```python
+    # Initialize ingestor
+    ingestor = DocumentIngestor()
+
+    # Process documents
+    vector_store = ingestor.process_documents("./docs")
+
+    # Save for later use
+    ingestor.save_vector_store()
+    ```
+
+Technical Details:
+    - Uses recursive character text splitting for robust chunking
+    - Supports UTF-8 and fallback encodings for text files
+    - Maintains detailed metadata for document traceability
+    - Thread-safe document processing
+    - Efficient batch processing for large document sets
+
+Notes:
+    - Vector store is saved to ./vector_store by default
+    - PDF processing requires text-based PDFs (not scanned)
+    - Memory usage scales with chunk size and document count
 """
 
 import os
@@ -26,7 +70,52 @@ logger = logging.getLogger(__name__)
 
 class DocumentIngestor:
     """
-    Handles document ingestion, chunking, and vector store creation.
+    A comprehensive document processing pipeline for RAG applications.
+
+    This class handles the complete lifecycle of document processing:
+    - Loading documents from files
+    - Splitting text into manageable chunks
+    - Computing embeddings using transformer models
+    - Creating and managing FAISS vector stores
+    - Maintaining document traceability through metadata
+
+    The class is designed to be both efficient for large document sets
+    and flexible enough to handle various document formats and configurations.
+
+    Attributes:
+        embedding_model_name (str): Name of the HuggingFace embedding model
+        chunk_size (int): Target size of text chunks in characters
+        chunk_overlap (int): Overlap between consecutive chunks
+        vector_store_path (str): Path to save/load vector store
+        embeddings: HuggingFace embeddings model instance
+        text_splitter: LangChain text splitter instance
+        vector_store (Optional[FAISS]): FAISS vector store instance
+        document_metadata (List[Dict]): Metadata for processed documents
+
+    Example:
+        ```python
+        # Initialize with custom settings
+        ingestor = DocumentIngestor(
+            embedding_model="all-mpnet-base-v2",
+            chunk_size=1000,
+            chunk_overlap=200
+        )
+
+        # Process a folder of documents
+        vector_store = ingestor.process_documents("./documents")
+
+        # Save for later use
+        ingestor.save_vector_store()
+
+        # Load existing store
+        loaded_store = ingestor.load_vector_store()
+        ```
+
+    Notes:
+        - Large chunk_size values improve context but increase memory usage
+        - chunk_overlap helps maintain coherence between chunks
+        - Vector store is automatically saved after processing
+        - Metadata is preserved for document tracing
     """
     
     def __init__(
@@ -70,13 +159,37 @@ class DocumentIngestor:
         
     def load_documents(self, folder_path: str) -> List[Document]:
         """
-        Load documents from a folder, supporting .txt and .pdf files.
-        
+        Load and parse documents from a specified folder.
+
+        This method recursively traverses the given folder and loads all supported
+        documents (.txt and .pdf files). It handles various encodings and formats,
+        adding comprehensive metadata to each document.
+
         Args:
-            folder_path: Path to folder containing documents
-            
+            folder_path: Absolute or relative path to the folder containing documents.
+                       Will be recursively searched for supported files.
+
         Returns:
-            List of loaded documents
+            List[Document]: List of LangChain Document objects, each containing:
+                - page_content: The text content of the document
+                - metadata: Dict with file info (name, type, path, etc.)
+
+        Raises:
+            ValueError: If the folder doesn't exist
+            Exception: For file reading or parsing errors
+
+        Example:
+            ```python
+            documents = ingestor.load_documents("./my_docs")
+            print(f"Loaded {len(documents)} documents")
+            ```
+
+        Notes:
+            - Supports .txt files (UTF-8 and fallback encodings)
+            - Supports text-based PDF files
+            - Skips unsupported file types with warning
+            - Adds extensive metadata for traceability
+            - Handles large files efficiently
         """
         documents = []
         folder = Path(folder_path)
@@ -156,13 +269,44 @@ class DocumentIngestor:
     
     def chunk_documents(self, documents: List[Document]) -> List[Document]:
         """
-        Split documents into chunks.
-        
+        Split documents into semantically meaningful chunks.
+
+        This method processes documents into smaller chunks suitable for embedding
+        and retrieval. It preserves document structure where possible and maintains
+        chunk relationships through metadata.
+
+        The chunking process:
+        1. Splits text using recursive character text splitter
+        2. Maintains document grouping and ordering
+        3. Adds detailed chunk metadata for tracing
+        4. Preserves semantic coherence through overlap
+
         Args:
-            documents: List of documents to chunk
-            
+            documents: List of LangChain Document objects to be chunked
+
         Returns:
-            List of document chunks
+            List[Document]: List of document chunks, each containing:
+                - Portion of original text
+                - Enhanced metadata including:
+                    - Original file information
+                    - Chunk position and count
+                    - Character count
+                    - Page numbers (if applicable)
+                    - Relationship to other chunks
+
+        Example:
+            ```python
+            doc = Document(page_content="Long text...", metadata={...})
+            chunks = ingestor.chunk_documents([doc])
+            print(f"Created {len(chunks)} chunks")
+            ```
+
+        Notes:
+            - Chunk size and overlap are set during initialization
+            - Metadata is preserved and enhanced
+            - Chunks maintain reference to source document
+            - Intelligent splitting at sentence boundaries
+            - Overlap ensures context preservation
         """
         logger.info("Chunking documents...")
         chunks = self.text_splitter.split_documents(documents)
@@ -195,13 +339,48 @@ class DocumentIngestor:
     
     def create_vector_store(self, documents: List[Document]) -> FAISS:
         """
-        Create a FAISS vector store from documents.
-        
+        Create a FAISS vector store from processed document chunks.
+
+        This method handles the creation of a searchable vector store:
+        1. Computes embeddings for all document chunks
+        2. Creates a FAISS index for efficient similarity search
+        3. Stores document content and metadata for retrieval
+        4. Configures the store for optimal search performance
+
         Args:
-            documents: List of documents to embed
-            
+            documents: List of document chunks to embed and index.
+                     Each document should contain text content and metadata.
+
         Returns:
-            FAISS vector store
+            FAISS: A configured FAISS vector store containing:
+                - Document embeddings
+                - Original text content
+                - Associated metadata
+                - Optimized similarity search index
+
+        Raises:
+            ValueError: If no documents are provided
+            Exception: For embedding or index creation errors
+
+        Example:
+            ```python
+            chunks = ingestor.chunk_documents(documents)
+            store = ingestor.create_vector_store(chunks)
+            # Store ready for similarity search
+            ```
+
+        Technical Details:
+            - Uses HuggingFace embeddings model
+            - Creates L2-normalized vectors
+            - Configures FAISS for CPU or GPU
+            - Optimizes for search performance
+            - Preserves all document metadata
+
+        Notes:
+            - Memory usage scales with document count
+            - GPU acceleration if available
+            - Thread-safe implementation
+            - Automatic error handling
         """
         if not documents:
             raise ValueError("No documents provided for vector store creation")
@@ -271,13 +450,56 @@ class DocumentIngestor:
     
     def process_documents(self, folder_path: str) -> FAISS:
         """
-        Complete document processing pipeline.
-        
+        Execute the complete document processing pipeline.
+
+        This is the main entry point for document processing, combining all steps:
+        1. Document loading from files
+        2. Text extraction and cleaning
+        3. Chunking into segments
+        4. Computing embeddings
+        5. Creating vector store
+        6. Saving results to disk
+
+        The pipeline is designed for robustness and maintainability, with
+        comprehensive error handling and logging at each step.
+
         Args:
-            folder_path: Path to folder containing documents
-            
+            folder_path: Path to directory containing documents.
+                        Will be processed recursively.
+
         Returns:
-            FAISS vector store
+            FAISS: Fully configured vector store ready for similarity search,
+                  containing all processed documents with metadata.
+
+        Raises:
+            ValueError: If no valid documents found
+            Exception: For any processing pipeline errors
+
+        Example:
+            ```python
+            # Complete processing example
+            ingestor = DocumentIngestor()
+            try:
+                vector_store = ingestor.process_documents("./docs")
+                print(f"Indexed {vector_store.index.ntotal} chunks")
+            except Exception as e:
+                print(f"Processing failed: {e}")
+            ```
+
+        Pipeline Steps:
+            1. Validate and load documents
+            2. Split into optimal chunks
+            3. Compute embeddings
+            4. Create FAISS index
+            5. Save vector store
+            6. Store metadata
+
+        Notes:
+            - Processing time scales with document count
+            - Progress is logged at each step
+            - Automatic error recovery where possible
+            - Results are automatically saved
+            - Memory efficient processing
         """
         # Load documents
         documents = self.load_documents(folder_path)

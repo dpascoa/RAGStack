@@ -1,6 +1,11 @@
-RAG Question-Answering System
+# RAGStack: A Production-Ready RAG System
 
-A comprehensive Retrieval-Augmented Generation (RAG) application built with Python, featuring document ingestion, vector search, and AI-powered question answering with both API and web interfaces.
+A comprehensive Retrieval-Augmented Generation (RAG) system built with Python, offering seamless document processing, intelligent querying, and multiple interfaces for interaction. Perfect for building AI-powered document QA systems.
+
+![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)
+![LangChain](https://img.shields.io/badge/LangChain-Latest-green.svg)
+![FastAPI](https://img.shields.io/badge/FastAPI-Latest-teal.svg)
+![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 Features
 
     📄 Document Ingestion: Support for .txt and .pdf files with intelligent chunking

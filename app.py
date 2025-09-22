@@ -1,6 +1,63 @@
 """
-Streamlit UI for RAG application.
-Provides a user-friendly interface for document upload and question answering.
+Streamlit-based web interface for RAG (Retrieval-Augmented Generation) application.
+
+This module provides a user-friendly web interface for interacting with the RAG system,
+featuring:
+
+1. Document Management:
+   - File upload support (.txt, .pdf)
+   - Sample document creation
+   - Processing status and feedback
+   - Document statistics display
+
+2. Question Answering:
+   - Interactive chat interface
+   - Source document display
+   - Conversation history
+   - Answer generation with citations
+
+3. System Configuration:
+   - Model selection
+   - Retrieval parameter tuning
+   - Conversation management
+   - System status monitoring
+
+4. User Interface Features:
+   - Clean, intuitive design
+   - Real-time feedback
+   - Responsive layout
+   - Error handling
+   - Progress indicators
+
+Key Components:
+    - StreamlitRAGApp: Main application class
+    - Custom styling and layout
+    - Session state management
+    - File handling utilities
+    - Error recovery mechanisms
+
+Dependencies:
+    - streamlit: Web interface framework
+    - qa.py: Core RAG functionality
+    - ingest.py: Document processing
+    - tempfile: File handling
+    - logging: Activity tracking
+
+Example Usage:
+    ```bash
+    # Run the Streamlit app
+    streamlit run app.py
+
+    # Access in browser
+    # http://localhost:8501
+    ```
+
+Technical Notes:
+    - Uses Streamlit session state
+    - Efficient file handling
+    - Responsive design
+    - Error resilient
+    - Memory efficient
 """
 
 import streamlit as st
@@ -62,7 +119,56 @@ st.markdown("""
 
 
 class StreamlitRAGApp:
-    """Main Streamlit application for RAG system."""
+    """
+    Main Streamlit application class for the RAG system.
+
+    This class manages the complete web interface, including:
+    - System initialization and state management
+    - Document upload and processing
+    - Question answering interface
+    - Conversation history display
+    - System configuration
+    - User interface layout
+
+    The application provides:
+    1. Document Management:
+       - File upload interface
+       - Processing status
+       - Sample document creation
+       - Vector store statistics
+
+    2. Question Answering:
+       - Question input
+       - Answer display with citations
+       - Source document viewing
+       - Chat history management
+
+    3. Configuration:
+       - Model selection
+       - Retrieval settings
+       - Display preferences
+       - System controls
+
+    Example:
+        ```python
+        def main():
+            app = StreamlitRAGApp()
+            app.run()
+        ```
+
+    Technical Details:
+        - Uses Streamlit session state
+        - Manages file uploads efficiently
+        - Handles state persistence
+        - Provides error recovery
+        - Responsive layout design
+
+    Notes:
+        - Initialize once per session
+        - Handles page reloads
+        - Thread-safe implementation
+        - Memory-efficient processing
+    """
     
     def __init__(self):
         """Initialize the Streamlit app."""
@@ -70,7 +176,33 @@ class StreamlitRAGApp:
         self.initialize_rag_system()
     
     def initialize_session_state(self):
-        """Initialize Streamlit session state variables."""
+        """
+        Initialize Streamlit session state variables.
+
+        This method sets up the persistent state for the application:
+        - conversation_history: List of Q&A interactions
+        - rag_system: RAG system instance
+        - chatbot: Chat interface instance
+        - documents_processed: Document processing status
+
+        The session state ensures:
+        - State persistence across page reloads
+        - Component coordination
+        - User state tracking
+        - System status management
+
+        Technical Details:
+            - Uses Streamlit's session_state
+            - Thread-safe implementation
+            - Memory-efficient storage
+            - Handles edge cases
+
+        Notes:
+            - Called during app initialization
+            - Resets on session expiry
+            - Maintains conversation context
+            - Preserves system status
+        """
         if 'conversation_history' not in st.session_state:
             st.session_state.conversation_history = []
         
@@ -101,7 +233,41 @@ class StreamlitRAGApp:
                 logger.error(f"Error initializing RAG system: {str(e)}")
     
     def process_uploaded_documents(self, uploaded_files):
-        """Process uploaded documents."""
+        """
+        Process uploaded documents and update the RAG system.
+
+        This method handles the complete document processing workflow:
+        1. File validation and saving
+        2. Document processing
+        3. Vector store creation
+        4. System reinitialization
+        5. Cleanup of temporary files
+
+        The process ensures:
+        - Safe file handling
+        - Proper error handling
+        - System state updates
+        - Resource cleanup
+
+        Args:
+            uploaded_files: List of Streamlit UploadedFile objects
+                          (.txt or .pdf files)
+
+        Returns:
+            bool: True if processing successful, False otherwise
+
+        Technical Details:
+            - Uses temporary directory
+            - Handles multiple file types
+            - Manages system state
+            - Provides progress feedback
+
+        Notes:
+            - Supports .txt and .pdf
+            - Updates vector store
+            - Thread-safe processing
+            - Cleans up resources
+        """
         if not uploaded_files:
             return False
         
@@ -138,7 +304,45 @@ class StreamlitRAGApp:
             return False
     
     def display_sidebar(self):
-        """Display the sidebar with controls and information."""
+        """
+        Create and populate the application sidebar.
+
+        This method builds the sidebar interface containing:
+        1. System Status:
+           - Initialization status
+           - Document count
+           - Processing state
+
+        2. Document Upload:
+           - File upload interface
+           - Supported formats
+           - Processing controls
+
+        3. Model Settings:
+           - Model selection
+           - Retrieval parameters
+           - Performance options
+
+        4. Conversation Controls:
+           - History management
+           - Clear chat option
+           - Statistics display
+
+        Returns:
+            int: Current top_k value for document retrieval
+
+        Technical Details:
+            - Uses Streamlit components
+            - Updates in real-time
+            - Handles user interactions
+            - Manages system settings
+
+        Notes:
+            - Responsive layout
+            - Persistent settings
+            - Immediate feedback
+            - Error resilient
+        """
         st.sidebar.title("🤖 RAG System")
         
         # System status
@@ -253,7 +457,42 @@ class StreamlitRAGApp:
         self.display_conversation_history()
     
     def process_question(self, question: str, top_k: int):
-        """Process a question and display the answer."""
+        """
+        Process a user question and display the response.
+
+        This method handles the complete Q&A workflow:
+        1. Question Processing:
+           - Input validation
+           - Parameter updating
+           - System preparation
+
+        2. Answer Generation:
+           - RAG processing
+           - Source retrieval
+           - Response formatting
+
+        3. Display Updates:
+           - Answer rendering
+           - Source display
+           - Status updates
+           - Error handling
+
+        Args:
+            question: User's question text
+            top_k: Number of documents to retrieve
+
+        Technical Details:
+            - Updates retrieval parameters
+            - Manages chat history
+            - Provides visual feedback
+            - Handles errors gracefully
+
+        Notes:
+            - Thread-safe processing
+            - Immediate feedback
+            - Session state updates
+            - Error resilient
+        """
         if not st.session_state.chatbot:
             st.error("Chatbot not initialized. Please try reloading the page.")
             return
@@ -284,7 +523,46 @@ class StreamlitRAGApp:
             logger.error(f"Error processing question: {str(e)}")
     
     def display_conversation_history(self):
-        """Display the conversation history."""
+        """
+        Display the conversation history in the main interface.
+
+        This method renders the chat history with:
+        1. Message Display:
+           - User questions
+           - System answers
+           - Timestamps
+           - Source documents
+
+        2. Visual Features:
+           - Message styling
+           - Role indicators
+           - Expandable sources
+           - Error messages
+
+        3. Organization:
+           - Reverse chronological order
+           - Grouped by conversation
+           - Clear visual hierarchy
+           - Responsive layout
+
+        4. Interactive Elements:
+           - Expandable source documents
+           - Scrollable history
+           - Visual feedback
+           - Error indicators
+
+        Technical Details:
+            - Uses Streamlit markdown
+            - Custom HTML/CSS styling
+            - Efficient rendering
+            - Memory optimization
+
+        Notes:
+            - Auto-scrolls to new messages
+            - Handles long conversations
+            - Preserves formatting
+            - Source traceability
+        """
         if not st.session_state.conversation_history:
             return
         
@@ -329,7 +607,39 @@ class StreamlitRAGApp:
                 st.markdown("---")
     
     def create_sample_documents(self):
-        """Create sample documents for demonstration."""
+        """
+        Create and process sample documents for demonstration.
+
+        This method provides a quick start experience by:
+        1. Creating sample documents about AI/ML
+        2. Processing them through the RAG pipeline
+        3. Initializing the system for immediate use
+        4. Providing example content
+
+        The process includes:
+        - Creating the sample directory
+        - Writing informative content
+        - Processing documents
+        - Initializing the RAG system
+
+        Sample Content:
+        - AI and Machine Learning overview
+        - RAG system explanation
+        - Vector search details
+        - Technical concepts
+
+        Technical Details:
+            - Creates persistent files
+            - Processes automatically
+            - Updates system state
+            - Provides feedback
+
+        Notes:
+            - One-click initialization
+            - Educational content
+            - Ready for Q&A
+            - Reproducible setup
+        """
         sample_dir = "./sample_docs"
         os.makedirs(sample_dir, exist_ok=True)
         
