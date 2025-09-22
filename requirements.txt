@@ -1,0 +1,29 @@
+# Core RAG dependencies
+langchain
+langchain-community
+langchain-huggingface
+
+# Vector store and embeddings
+faiss-cpu
+sentence-transformers
+
+# Document processing
+pypdf
+python-multipart
+
+# LLM and tokenization
+transformers
+torch
+tokenizers
+
+# API and UI
+fastapi
+uvicorn[standard]
+streamlit
+
+# Utilities
+numpy
+pandas
+python-dotenv
+pydantic
+requests

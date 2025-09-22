@@ -1,0 +1,138 @@
+# RAG Application - Quick Start Guide
+
+## 1. Installation and Setup
+
+# Create project directory
+mkdir rag-application
+cd rag-application
+
+# Save all the Python files (ingest.py, qa.py, api.py, app.py)
+# Save requirements.txt
+
+# Install dependencies
+pip install -r requirements.txt
+
+## 2. Running the Application
+
+### Option A: Streamlit Web Interface (Easiest)
+streamlit run app.py
+
+# Then open browser to http://localhost:8501
+# - Upload documents via sidebar
+# - Ask questions in main interface
+# - View answers with source citations
+
+### Option B: FastAPI Service
+python api.py
+
+# Then open browser to http://localhost:8000/docs
+# Use the interactive API documentation
+
+### Option C: Command Line Testing
+# First create and process sample documents
+python ingest.py
+
+# Then test Q&A functionality
+python qa.py
+
+## 3. Example API Calls
+
+# Health check
+curl http://localhost:8000/health
+
+# Ask a question
+curl "http://localhost:8000/ask?question=What%20is%20machine%20learning?"
+
+# Search documents
+curl "http://localhost:8000/search?query=artificial%20intelligence&k=3"
+
+# Upload documents
+curl -X POST "http://localhost:8000/upload-documents" \
+     -F "files=@document1.pdf" \
+     -F "files=@document2.txt"
+
+# Check system status
+curl http://localhost:8000/status
+
+# Update model
+curl -X PUT "http://localhost:8000/model?model_name=google/flan-t5-small"
+
+## 4. Example Questions to Try
+
+# After uploading documents or running sample creation:
+- "What is the main topic discussed in the documents?"
+- "How does RAG work?"
+- "What are the benefits of using vector databases?"
+- "Explain the difference between AI and machine learning"
+- "What is FAISS used for?"
+
+## 5. Directory Structure After Running
+
+rag-application/
+├── ingest.py
+├── qa.py  
+├── api.py
+├── app.py
+├── requirements.txt
+├── README.md
+├── vector_store/              # Created automatically
+│   ├── index.faiss
+│   ├── index.pkl
+│   └── metadata.pkl
+├── sample_docs/               # Created when running ingest.py
+│   └── sample.txt
+└── uploaded_docs/             # Created when uploading via API/UI
+
+## 6. Customization Examples
+
+# Change embedding model in ingest.py:
+ingestor = DocumentIngestor(
+    embedding_model="sentence-transformers/all-mpnet-base-v2"  # Higher quality
+)
+
+# Change LLM model in qa.py:
+qa_system = RAGQuestionAnswerer(
+    llm_model_name="google/flan-t5-large"  # Better quality but slower
+)
+
+# Adjust chunking parameters:
+ingestor = DocumentIngestor(
+    chunk_size=800,      # Larger chunks
+    chunk_overlap=150    # More overlap
+)
+
+# Change retrieval settings:
+qa_system = RAGQuestionAnswerer(
+    top_k_retrieval=6    # Retrieve more documents
+)
+
+## 7. Troubleshooting Commands
+
+# Check if models are downloading correctly
+python -c "from transformers import AutoTokenizer; AutoTokenizer.from_pretrained('google/flan-t5-base')"
+
+# Test FAISS installation
+python -c "import faiss; print('FAISS working!')"
+
+# Test document loading
+python -c "from ingest import DocumentIngestor; print('Ingest module working!')"
+
+# Check vector store
+python -c "from qa import RAGQuestionAnswerer; qa = RAGQuestionAnswerer(); print('QA system loaded:', qa.vector_store is not None)"
+
+## 8. Performance Testing
+
+# Time document processing
+time python ingest.py
+
+# Test API response time
+time curl "http://localhost:8000/ask?question=test"
+
+# Monitor memory usage
+python -c "
+import psutil
+from qa import RAGQuestionAnswerer
+print(f'Memory before: {psutil.virtual_memory().used / 1024**3:.1f} GB')
+qa = RAGQuestionAnswerer()
+print(f'Memory after: {psutil.virtual_memory().used / 1024**3:.1f} GB')
+"
