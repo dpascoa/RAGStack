@@ -1,4 +1,3 @@
-````markdown
 # RAGStack — A Production-Ready RAG System
 
 A comprehensive Retrieval-Augmented Generation (RAG) system in Python for seamless document processing, intelligent querying, and multiple interaction interfaces. Perfect for building AI-powered document Q&A systems.
@@ -77,7 +76,7 @@ RAG System Architecture
           └──────────────▶   LLM Answer    │
                          │  (Flan-T5/etc.) │
                          └─────────────────┘
-````
+```
 
 ---
 
